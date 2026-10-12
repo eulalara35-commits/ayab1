@@ -14,25 +14,29 @@ export function StepTracker({ status }: { status: BookingStatus }) {
     );
   }
 
-  const currentIndex = TRIP_STEPS.findIndex((s) => s.key === status);
+  const steps =
+    status === 'picking_up' || status === 'started'
+      ? TRIP_STEPS.slice(TRIP_STEPS.findIndex((step) => step.key === 'picking_up'))
+      : TRIP_STEPS;
+  const currentIndex = steps.findIndex((step) => step.key === status);
 
   // Completed steps show checks; the current step is named beneath the progress line.
   return (
     <div>
       <div className="step-tracker">
-        {TRIP_STEPS.map((step, i) => (
+        {steps.map((step, i) => (
           <div key={step.key} className="flex flex-1 items-center last:flex-none">
             <div className={`step-dot ${i < currentIndex ? 'is-done' : i === currentIndex ? 'is-current' : ''}`}>
               {i < currentIndex ? <CheckIcon width={12} height={12} /> : i + 1}
             </div>
-            {i < TRIP_STEPS.length - 1 && (
+            {i < steps.length - 1 && (
               <div className={`step-line ${i < currentIndex ? 'is-done' : ''}`} />
             )}
           </div>
         ))}
       </div>
       <p className="mt-2 text-center text-[13px] font-semibold text-ink">
-        {TRIP_STEPS[currentIndex]?.label ?? 'Trip status'}
+        {steps[currentIndex]?.label ?? 'Trip status'}
       </p>
     </div>
   );

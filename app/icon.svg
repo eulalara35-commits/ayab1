@@ -1,5 +1,5 @@
-<!-- Ito ang AYAB app icon; inilalarawan ng SVG ang pulang tile at letrang A. -->
+<!-- Ito ang AYAB app icon na may asul na tile at puting wordmark. -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-  <rect width="100" height="100" rx="22" fill="#7A0019"/>
-  <text x="50" y="66" font-size="46" font-family="Arial, sans-serif" font-weight="800" fill="#F0AC00" text-anchor="middle">A</text>
+  <rect width="100" height="100" rx="22" fill="#1769E0"/>
+  <text x="50" y="57" font-size="21" font-family="Arial, sans-serif" font-weight="800" letter-spacing="1" fill="#FFFFFF" text-anchor="middle">AYAB</text>
 </svg>

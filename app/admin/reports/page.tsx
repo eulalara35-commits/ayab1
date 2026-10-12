@@ -20,7 +20,7 @@ function ReportsAdmin() {
     .sort((a, b) => b.completedTrips - a.completedTrips)
     .slice(0, 5);
 
-  const statusCounts = ['searching', 'accepted', 'verified', 'started', 'completed', 'cancelled'].map(
+  const statusCounts = ['searching', 'accepted', 'picking_up', 'verified', 'started', 'completed', 'cancelled'].map(
     (status) => ({
       status,
       count: bookings.filter((b) => b.status === status).length,

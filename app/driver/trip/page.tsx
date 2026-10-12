@@ -1,33 +1,87 @@
 // Purpose: Manage an active ride.
 'use client';
 
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { RequireRole } from '@/components/RequireRole';
 import { PageHeader } from '@/components/PageHeader';
-import { StepTracker } from '@/components/StepTracker';
 import { RideMap } from '@/components/RideMap';
 import { PhoneIcon } from '@/components/Icons';
 import { useApp } from '@/lib/store';
-import { formatPeso, initials } from '@/lib/utils';
+import { formatCountdown, formatPeso, getRemainingSeconds, getTripProgress, initials } from '@/lib/utils';
 import { fetchDrivingRoute, type DrivingRoute } from '@/lib/routing';
+import type { BookingStatus } from '@/lib/types';
 
+function driverStageLabel(status: BookingStatus): string {
+  switch (status) {
+    case 'accepted':
+      return 'Ready for pickup';
+    case 'verified':
+      return 'Preparing for pickup';
+    case 'confirmed':
+      return 'Ready for pickup';
+    case 'picking_up':
+      return 'Picking up passenger';
+    case 'started':
+      return 'On the way to destination';
+    case 'completed':
+      return 'Trip completed';
+    default:
+      return 'Trip status';
+  }
+}
 
 function Trip() {
-  const { currentUser, bookings, users, drivers, updateDriverLocation, startTrip, completeTrip } = useApp();
+  const { currentUser, bookings, users, drivers, updateDriverLocation, startPickup, completeTrip } = useApp();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const requestedTripId = searchParams.get('bookingId');
   const lastLocationSent = useRef(0);
   const [roadRoute, setRoadRoute] = useState<DrivingRoute | null>(null);
   const [routeError, setRouteError] = useState('');
   const [routeRetry, setRouteRetry] = useState(0);
+  const [tripProgress, setTripProgress] = useState(0);
+  const [pickupEtaSeconds, setPickupEtaSeconds] = useState(0);
 
-  const trip = bookings
+  const driverBookings = bookings
     .filter((b) => b.driverId === currentUser?.id)
-    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
-    .find((b) => ['accepted', 'verified', 'confirmed', 'started', 'completed'].includes(b.status));
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  const trip = driverBookings.find((b) => b.id === requestedTripId)
+    ?? driverBookings.find((b) => ['accepted', 'picking_up', 'verified', 'confirmed', 'started'].includes(b.status))
+    ?? driverBookings.find((b) => b.status === 'completed');
 
   const passenger = users.find((u) => u.id === trip?.passengerId);
   const driver = drivers.find((d) => d.id === currentUser?.id);
+  const driverStage = trip ? driverStageLabel(trip.status) : undefined;
+
+  function finishTrip() {
+    if (!trip || !currentUser || tripProgress < 1) return;
+    completeTrip(trip.id, currentUser.id);
+    router.replace('/driver/home');
+  }
+
+  useEffect(() => {
+    if (!trip || trip.status !== 'picking_up') {
+      setPickupEtaSeconds(0);
+      return;
+    }
+    const syncPickupEta = () => setPickupEtaSeconds(getRemainingSeconds(trip.driverArrivalDeadline));
+    syncPickupEta();
+    const pickupInterval = window.setInterval(syncPickupEta, 1000);
+    return () => window.clearInterval(pickupInterval);
+  }, [trip?.id, trip?.status, trip?.driverArrivalDeadline]);
+
+  useEffect(() => {
+    if (!trip || trip.status !== 'started') {
+      setTripProgress(0);
+      return;
+    }
+    const startedAt = trip.tripStartedAt ?? trip.updatedAt ?? trip.createdAt;
+    const syncProgress = () => setTripProgress(getTripProgress(startedAt));
+    syncProgress();
+    const progressInterval = window.setInterval(syncProgress, 250);
+    return () => window.clearInterval(progressInterval);
+  }, [trip?.id, trip?.status, trip?.tripStartedAt, trip?.updatedAt, trip?.createdAt]);
 
   useEffect(() => {
     const activeTrip = trip;
@@ -103,7 +157,9 @@ function Trip() {
       <PageHeader title="Active trip" backHref="/driver/home" />
       <div className="page-body">
         <div className="panel !mt-0">
-          <StepTracker status={trip.status} />
+          <p className="text-center text-[13px] font-semibold text-ink" role="status" aria-live="polite">
+            {driverStage}
+          </p>
         </div>
 
         <RideMap
@@ -158,21 +214,54 @@ function Trip() {
         </div>
 
         
-        {trip.status === 'accepted' && (
-          <p className="panel mt-2 text-center text-[13px] text-ink/60">Waiting for the commuter to complete payment and verification.</p>
-        )}
-        {trip.status === 'verified' && (
-          <p className="panel mt-2 text-center text-[13px] text-ink/60">Payment verified. The commuter cancellation grace period is active.</p>
-        )}
-        {trip.status === 'confirmed' && (
-          <button onClick={() => startTrip(trip.id)} className="btn-primary mt-2">
-            Start trip
+        {['accepted', 'verified', 'confirmed'].includes(trip.status) && (
+          <button onClick={() => startPickup(trip.id)} className="btn-primary mt-2">
+            Start pickup
           </button>
+        )}
+        {trip.status === 'picking_up' && (
+          <div className="panel mt-2 text-center" role="status" aria-live="polite">
+            <p className="text-[13px] font-semibold text-ink">
+              On the way to {trip.pickup.name}.
+            </p>
+            <p className="mt-1 text-[12px] text-ink/60">
+              {pickupEtaSeconds > 0
+                ? `Arriving in ${formatCountdown(pickupEtaSeconds)}`
+                : 'Arriving now. The trip will start automatically.'}
+            </p>
+          </div>
         )}
         {trip.status === 'started' && (
-          <button onClick={() => completeTrip(trip.id)} className="btn-primary mt-2">
-            Complete trip
-          </button>
+          <div className="panel mt-2">
+            <p className="text-center text-[13px] font-semibold text-ink">
+              {tripProgress >= 1
+                ? `Arrived at ${trip.destination.name} · 100%`
+                : `On the way to ${trip.destination.name} · ${Math.round(tripProgress * 100)}%`}
+            </p>
+            <div
+              className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100"
+              role="progressbar"
+              aria-label="Simulated trip progress"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.max(0, Math.round(tripProgress * 100))}
+            >
+              <div
+                className="h-full rounded-full bg-[#1769e0] transition-[width] duration-300"
+                style={{ width: `${Math.max(0, tripProgress * 100)}%` }}
+              />
+            </div>
+            <p className="mt-3 text-center text-[12px] text-ink/60">
+              {tripProgress >= 1
+                ? 'You can now mark the trip as finished.'
+                : 'Trip progress is shared with the commuter.'}
+            </p>
+            {tripProgress >= 1 && (
+              <button type="button" onClick={finishTrip} className="btn-primary mt-4 w-full">
+                Complete trip
+              </button>
+            )}
+          </div>
         )}
         {trip.status === 'completed' && (
           <button onClick={() => router.push('/driver/home')} className="btn-outline mt-2">

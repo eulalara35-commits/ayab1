@@ -4,7 +4,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { ANNOUNCEMENTS, BOOKINGS, DRIVERS, INCIDENTS, PLACES, USERS } from './mock-data';
 import { clearAllAyabData, loadItem, saveItem } from './storage';
-import { distanceKm, estimateFareForCategory, newId } from './utils';
+import { distanceKm, estimateFareForCategory, getTripProgress, newId } from './utils';
 import type {
   Announcement,
   AppNotification,
@@ -40,13 +40,13 @@ interface AppContextValue extends AppState {
     specialFare?: number,
     passengerCount?: number,
   ) => Booking;
+  createDemoBooking: () => Booking;
   updateBooking: (bookingId: string, patch: Partial<Booking>) => void;
-  cancelBooking: (bookingId: string) => void;
   acceptBooking: (bookingId: string, driverId: string) => void;
   declineBooking: (bookingId: string) => void;
   verifyBooking: (bookingId: string) => void;
-  startTrip: (bookingId: string) => void;
-  completeTrip: (bookingId: string) => void;
+  startPickup: (bookingId: string) => void;
+  completeTrip: (bookingId: string, completedByUserId: string) => void;
   rateBooking: (bookingId: string, rating: number, review: string) => void;
   toggleDriverOnline: (driverId: string) => void;
   updateDriverLocation: (driverId: string, lat: number, lng: number) => void;
@@ -85,17 +85,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (hydrated.current) return;
     hydrated.current = true;
     const savedAnnouncements = loadItem('announcements', ANNOUNCEMENTS);
-    const savedBookings = loadItem('bookings', BOOKINGS).map((booking) => ({
-      ...booking,
-      pickup:
-        booking.pickup.id === 'p1' && booking.pickup.lat === 17.603 && booking.pickup.lng === 121.718
-          ? PLACES[0]
-          : booking.pickup,
-      destination:
-        booking.destination.id === 'p3' && booking.destination.lat === 17.610 && booking.destination.lng === 121.722
-          ? PLACES[2]
-          : booking.destination,
-    }));
+    const savedBookings = loadItem('bookings', BOOKINGS).map((booking) => {
+      const normalized = {
+        ...booking,
+        pickup:
+          booking.pickup.id === 'p1' && booking.pickup.lat === 17.603 && booking.pickup.lng === 121.718
+            ? PLACES[0]
+            : booking.pickup,
+        destination:
+          booking.destination.id === 'p3' && booking.destination.lat === 17.610 && booking.destination.lng === 121.722
+            ? PLACES[2]
+            : booking.destination,
+      };
+      return normalized;
+    });
     setState({
       mounted: true,
       currentUser: loadItem('currentUser', null as User | null),
@@ -105,7 +108,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       incidents: loadItem('incidents', INCIDENTS),
       announcements: savedAnnouncements.map((announcement) =>
         announcement.id === 'an1'
-          ? { ...announcement, body: 'Maysa nga Ayab, May Tricy Agad' }
+          ? { ...announcement, body: 'Maysa nga AYAB, may tricy agad' }
           : announcement,
       ),
       notifications: loadItem('notifications', [] as AppNotification[]),
@@ -203,6 +206,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       ...s,
       users: s.users.map((user) => user.id === userId ? { ...user, ...profile } : user),
       drivers: s.drivers.map((driver) => driver.id === userId ? { ...driver, ...profile } : driver),
+      currentUser: s.currentUser?.id === userId ? { ...s.currentUser, ...profile } : s.currentUser,
     }));
   }, []);
 
@@ -223,11 +227,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         throw new RangeError(`Special ride fare must be at least ${minimumFare}.`);
       }
       const now = new Date();
-      const autoAssignedDriver = state.drivers.find((driver) => driver.online && driver.verified);
+      const availableDriver = state.drivers
+        .filter(
+          (driver) =>
+            driver.online &&
+            driver.verified &&
+            !state.bookings.some(
+              (booking) =>
+                booking.driverId === driver.id &&
+                ['accepted', 'picking_up', 'verified', 'confirmed', 'started'].includes(booking.status),
+            ),
+        )
+        .sort(
+          (a, b) =>
+            distanceKm({ ...pickup, lat: a.lat, lng: a.lng }, pickup) -
+            distanceKm({ ...pickup, lat: b.lat, lng: b.lng }, pickup),
+        )[0];
+      if (!availableDriver) {
+        throw new Error('No drivers are available right now. Please try again later.');
+      }
       const booking: Booking = {
         id: newId('AYAB'),
         passengerId: state.currentUser?.id ?? 'guest',
         passengerName: state.currentUser?.name ?? 'Guest',
+        driverId: availableDriver.id,
         pickup,
         destination,
         distance,
@@ -235,18 +258,57 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         fareCategory,
         passengerCount: normalizedPassengerCount,
         ...(specialFare !== undefined && { specialRide: true, fareOffer: specialFare }),
-        status: autoAssignedDriver ? 'accepted' : 'searching',
-        driverId: autoAssignedDriver?.id,
-        paymentStatus: 'pending_payment',
+        status: 'picking_up',
+        paymentStatus: 'paid',
+        paymentCompletedAt: now.toISOString(),
         createdAt: now.toISOString(),
         updatedAt: now.toISOString(),
-        driverResponseDeadline: autoAssignedDriver ? undefined : new Date(now.getTime() + 60_000).toISOString(),
+        driverArrivalDeadline: new Date(now.getTime() + 30_000).toISOString(),
       };
-      setState((s) => ({ ...s, bookings: [booking, ...s.bookings] }));
+      setState((s) => ({
+        ...s,
+        bookings: [booking, ...s.bookings],
+        notifications: [
+          {
+            id: newId('N'),
+            userId: availableDriver.id,
+            message: `A ride has been assigned to you. Please head to ${pickup.name}.`,
+            read: false,
+            date: now.toISOString(),
+          },
+          ...s.notifications,
+        ],
+      }));
       return booking;
     },
-    [state.currentUser, state.drivers],
+    [state.currentUser, state.drivers, state.bookings],
   );
+
+  const createDemoBooking = useCallback((): Booking => {
+    const passenger = USERS.find((user) => user.role === 'commuter');
+    if (!passenger) throw new Error('Cannot create a demo ride without a commuter account.');
+    const pickup = PLACES[0];
+    const destination = PLACES[2];
+    const now = new Date();
+    const booking: Booking = {
+      id: newId('AYAB-DEMO'),
+      passengerId: passenger.id,
+      passengerName: passenger.name,
+      pickup,
+      destination,
+      distance: Math.max(0.3, distanceKm(pickup, destination)),
+      fare: estimateFareForCategory(destination, 'regular'),
+      fareCategory: 'regular',
+      passengerCount: 1,
+      status: 'searching',
+      paymentStatus: 'pending_payment',
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+      driverResponseDeadline: new Date(now.getTime() + 20_000).toISOString(),
+    };
+    setState((s) => ({ ...s, bookings: [booking, ...s.bookings] }));
+    return booking;
+  }, []);
 
   // Tumatanggap ng booking ID at partial na pagbabago; ina-update lang ang katugmang booking sa state.
   const updateBooking = useCallback((bookingId: string, patch: Partial<Booking>) => {
@@ -258,35 +320,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }));
   }, []);
 
-  // Tumatanggap ng booking ID at itinatakda ang status nito sa cancelled.
-  const cancelBooking = useCallback((bookingId: string) => {
-    setState((s) => ({
-      ...s,
-      bookings: s.bookings.map((b) => {
-        if (b.id !== bookingId) return b;
-        if (b.status !== 'verified' || !b.cancellationDeadline || new Date(b.cancellationDeadline).getTime() <= Date.now()) return b;
-        return {
-          ...b,
-          status: 'cancelled' as BookingStatus,
-          paymentStatus: b.paymentStatus === 'paid' ? 'refund_pending' : b.paymentStatus,
-          cancellationDeadline: undefined,
-          updatedAt: new Date().toISOString(),
-        };
-      }),
-    }));
-  }, []);
-
   // Tumatanggap ng booking ID at driver ID; itinatakda ang driver at status, saka nagno-notify sa commuter.
   const acceptBooking = useCallback(
     (bookingId: string, driverId: string) => {
       const booking = state.bookings.find((b) => b.id === bookingId);
-      if (!booking || booking.status !== 'searching') return;
-      updateBooking(bookingId, {
-        status: 'accepted',
-        driverId,
-        paymentStatus: 'pending_payment',
-      });
       const driver = state.drivers.find((d) => d.id === driverId);
+      const driverHasActiveTrip = state.bookings.some(
+        (b) => b.driverId === driverId && ['accepted', 'picking_up', 'verified', 'confirmed', 'started'].includes(b.status),
+      );
+      if (!booking || booking.status !== 'searching' || !driver?.online || !driver.verified || driverHasActiveTrip) return;
+      const prepaid = booking.paymentStatus === 'paid';
+      updateBooking(bookingId, {
+        status: prepaid ? 'picking_up' : 'accepted',
+        driverId,
+        paymentStatus: prepaid ? 'paid' : 'pending_payment',
+        paymentCompletedAt: prepaid ? booking.paymentCompletedAt : undefined,
+        driverResponseDeadline: undefined,
+        driverArrivalDeadline: prepaid ? new Date(Date.now() + 30_000).toISOString() : undefined,
+      });
       if (booking && driver) {
         pushNotification(booking.passengerId, `${driver.name} accepted your trip request.`);
       }
@@ -307,7 +358,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [state.bookings, updateBooking, pushNotification],
   );
 
-  // Tumatanggap ng booking ID at inililipat ang booking sa verified status.
   const verifyBooking = useCallback(
     (bookingId: string) => {
       const booking = state.bookings.find((b) => b.id === bookingId);
@@ -317,39 +367,73 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         status: 'verified',
         paymentStatus: 'paid',
         paymentCompletedAt: now.toISOString(),
-        cancellationDeadline: new Date(now.getTime() + 60_000).toISOString(),
       });
     },
     [state.bookings, updateBooking],
   );
 
-  // Tumatanggap ng booking ID at inililipat ang booking sa started status.
-  const startTrip = useCallback(
+  const startPickup = useCallback(
     (bookingId: string) => {
       const booking = state.bookings.find((b) => b.id === bookingId);
-      if (!booking || booking.status !== 'confirmed') return;
-      updateBooking(bookingId, { status: 'started', cancellationDeadline: undefined });
+      if (!booking || !['accepted', 'verified', 'confirmed'].includes(booking.status)) return;
+      updateBooking(bookingId, {
+        status: 'picking_up',
+        driverArrivalDeadline: new Date(Date.now() + 30_000).toISOString(),
+      });
     },
     [state.bookings, updateBooking],
   );
 
-  // Tumatanggap ng booking ID; tinatapos ang booking, dinadagdagan ang completed trip count ng driver, at nagpapadala ng notification.
+  // Finalizes the trip after either participant confirms arrival and notifies the other.
   const completeTrip = useCallback(
-    (bookingId: string) => {
+    (bookingId: string, completedByUserId: string) => {
       const booking = state.bookings.find((b) => b.id === bookingId);
-      if (!booking || booking.status !== 'started') return;
-      updateBooking(bookingId, { status: 'completed' });
-      if (booking) {
-        setState((s) => ({
+      if (
+        !booking ||
+        booking.status !== 'started' ||
+        ![booking.passengerId, booking.driverId].includes(completedByUserId)
+      ) return;
+      setState((s) => {
+        const currentBooking = s.bookings.find((b) => b.id === bookingId);
+        if (
+          !currentBooking ||
+          currentBooking.status !== 'started' ||
+          ![currentBooking.passengerId, currentBooking.driverId].includes(completedByUserId) ||
+          getTripProgress(
+            currentBooking.tripStartedAt ?? currentBooking.updatedAt ?? currentBooking.createdAt,
+          ) < 1
+        ) return s;
+        const otherParticipantId =
+          completedByUserId === currentBooking.passengerId
+            ? currentBooking.driverId
+            : currentBooking.passengerId;
+        const completedByDriver = completedByUserId === currentBooking.driverId;
+        return {
           ...s,
-          drivers: s.drivers.map((d) =>
-            d.id === booking.driverId ? { ...d, completedTrips: d.completedTrips + 1 } : d,
+          bookings: s.bookings.map((b) =>
+            b.id === bookingId ? { ...b, status: 'completed', updatedAt: new Date().toISOString() } : b,
           ),
-        }));
-        pushNotification(booking.passengerId, 'Trip completed. Thanks for riding with AYAB!');
-      }
+          drivers: s.drivers.map((d) =>
+            d.id === currentBooking.driverId ? { ...d, completedTrips: d.completedTrips + 1 } : d,
+          ),
+          notifications: otherParticipantId
+            ? [
+                {
+                  id: newId('N'),
+                  userId: otherParticipantId,
+                  message: completedByDriver
+                    ? 'Your driver marked the trip complete. Your receipt is ready.'
+                    : 'The commuter marked the trip complete.',
+                  read: false,
+                  date: new Date().toISOString(),
+                },
+                ...s.notifications,
+              ]
+            : s.notifications,
+        };
+      });
     },
-    [state.bookings, updateBooking, pushNotification],
+    [state.bookings],
   );
 
   // Tumatanggap ng booking ID, rating, at review; sine-save ang feedback at kinukuwenta ulit ang average rating ng driver.
@@ -387,10 +471,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               return { ...booking, status: 'expired' as BookingStatus, updatedAt: new Date().toISOString() };
             }
           }
-          if (booking.status === 'verified' && booking.cancellationDeadline) {
-            const expiresAt = new Date(booking.cancellationDeadline).getTime();
-            if (expiresAt <= now) {
-              return { ...booking, status: 'confirmed' as BookingStatus, updatedAt: new Date().toISOString() };
+          if (booking.status === 'picking_up' && booking.driverArrivalDeadline) {
+            const arrivalTime = new Date(booking.driverArrivalDeadline).getTime();
+            if (arrivalTime <= now) {
+              return {
+                ...booking,
+                status: 'started' as BookingStatus,
+                tripStartedAt: booking.driverArrivalDeadline,
+                updatedAt: new Date().toISOString(),
+              };
             }
           }
           return booking;
@@ -496,12 +585,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       logout,
       updateUserProfile,
       createBooking,
+      createDemoBooking,
       updateBooking,
-      cancelBooking,
       acceptBooking,
       declineBooking,
       verifyBooking,
-      startTrip,
+      startPickup,
       completeTrip,
       rateBooking,
       toggleDriverOnline,
@@ -522,12 +611,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       logout,
       updateUserProfile,
       createBooking,
+      createDemoBooking,
       updateBooking,
-      cancelBooking,
       acceptBooking,
       declineBooking,
       verifyBooking,
-      startTrip,
+      startPickup,
       completeTrip,
       rateBooking,
       toggleDriverOnline,

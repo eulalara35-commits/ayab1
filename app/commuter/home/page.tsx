@@ -13,9 +13,11 @@ function CommuterHome() {
   const { currentUser, bookings, drivers, announcements, notifications } = useApp();
 
   const myBookings = bookings.filter((b) => b.passengerId === currentUser?.id);
-  const activeBooking = myBookings.find((b) =>
-    ['searching', 'accepted', 'verified', 'confirmed', 'started'].includes(b.status),
-  );
+  const latestBooking = [...myBookings].sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+  const activeBooking =
+    latestBooking && ['searching', 'accepted', 'picking_up', 'verified', 'confirmed', 'started'].includes(latestBooking.status)
+      ? latestBooking
+      : undefined;
   const completedCount = myBookings.filter((b) => b.status === 'completed').length;
   const nearbyDrivers = drivers.filter((d) => d.online && d.verified).length;
   const unread = notifications.filter((n) => n.userId === currentUser?.id && !n.read).length;

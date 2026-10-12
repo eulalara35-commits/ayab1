@@ -5,6 +5,7 @@ export type FareCategory = 'regular' | 'discounted' | 'special';
 export type BookingStatus =
   | 'searching'
   | 'accepted'
+  | 'picking_up'
   | 'declined'
   | 'expired'
   | 'pending_payment'
@@ -12,7 +13,6 @@ export type BookingStatus =
   | 'payment_failed'
   | 'paid'
   | 'verified'
-  | 'cancellation_grace_period'
   | 'cancelled'
   | 'confirmed'
   | 'started'
@@ -72,7 +72,8 @@ export interface Booking {
   createdAt: string;
   updatedAt?: string;
   driverResponseDeadline?: string;
-  cancellationDeadline?: string;
+  driverArrivalDeadline?: string;
+  tripStartedAt?: string;
   paymentCompletedAt?: string;
   rating?: number;
   review?: string;
@@ -112,7 +113,8 @@ export const TRIP_STEPS: { key: BookingStatus; label: string }[] = [
   { key: 'searching', label: 'Finding driver' },
   { key: 'accepted', label: 'Driver assigned' },
   { key: 'verified', label: 'Trip verified' },
-  { key: 'confirmed', label: 'Grace period ended' },
+  { key: 'confirmed', label: 'Trip confirmed' },
+  { key: 'picking_up', label: 'Picking up passenger' },
   { key: 'started', label: 'On trip' },
   { key: 'completed', label: 'Completed' },
 ];

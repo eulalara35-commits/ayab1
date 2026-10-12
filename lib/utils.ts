@@ -49,6 +49,12 @@ export function formatCountdown(totalSeconds: number): string {
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }
 
+export function getTripProgress(startedAt: string, now = Date.now()): number {
+  const startTime = new Date(startedAt).getTime();
+  if (!Number.isFinite(startTime)) return 0;
+  return Math.min(1, Math.max(0, (now - startTime) / 60_000));
+}
+
 // Tumatanggap ng ISO date string at ibinabalik ang mas madaling basahing petsa at oras; ginagamit ang original string kung hindi ma-format.
 export function formatDate(iso: string): string {
   try {

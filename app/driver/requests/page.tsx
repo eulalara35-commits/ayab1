@@ -10,18 +10,18 @@ import { formatPeso } from '@/lib/utils';
 
 
 function Requests() {
-  const { currentUser, drivers, bookings, acceptBooking, declineBooking } = useApp();
+  const { currentUser, drivers, bookings, acceptBooking, declineBooking, createDemoBooking } = useApp();
   const router = useRouter();
   const driver = drivers.find((d) => d.id === currentUser?.id);
   const requests = bookings.filter((b) => b.status === 'searching');
   const hasActiveTrip = bookings.some(
-    (b) => b.driverId === currentUser?.id && ['accepted', 'verified', 'confirmed', 'started'].includes(b.status),
+    (b) => b.driverId === currentUser?.id && ['accepted', 'picking_up', 'verified', 'confirmed', 'started'].includes(b.status),
   );
 
   function accept(bookingId: string) {
     if (!currentUser) return;
     acceptBooking(bookingId, currentUser.id);
-    router.push('/driver/trip');
+    router.push(`/driver/trip?bookingId=${encodeURIComponent(bookingId)}`);
   }
 
   return (
@@ -35,9 +35,15 @@ function Requests() {
         )}
         {hasActiveTrip && (
           <div className="panel !mt-0 bg-brand/5 text-[13px] text-brand">
-            Finish your current trip before accepting a new one.
+            Finish your current trip before accepting another one. You can still decline requests.
           </div>
         )}
+        <div className="panel">
+          <p className="text-[13px] text-ink/60">Want to try the driver request flow?</p>
+          <button type="button" onClick={createDemoBooking} className="btn-outline mt-3 w-full">
+            Create demo ride request
+          </button>
+        </div>
 
         {requests.length === 0 ? (
           <div className="empty-state">
@@ -75,7 +81,7 @@ function Requests() {
                   <button
                     type="button"
                     onClick={() => declineBooking(r.id)}
-                    disabled={!driver?.online || hasActiveTrip}
+                    disabled={!driver?.online}
                     className="btn-outline flex-1"
                   >
                     Decline

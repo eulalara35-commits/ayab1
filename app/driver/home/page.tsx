@@ -8,7 +8,6 @@ import { RequireRole } from '@/components/RequireRole';
 import { PageHeader } from '@/components/PageHeader';
 import { BottomTabs } from '@/components/BottomTabs';
 import { MapPinIcon, StarIcon } from '@/components/Icons';
-import { PLACES } from '@/lib/mock-data';
 import { useApp } from '@/lib/store';
 import { formatPeso } from '@/lib/utils';
 import type { Booking } from '@/lib/types';
@@ -17,18 +16,19 @@ type MatchingMode = 'auto' | 'manual';
 
 
 function DriverHome() {
-  const { currentUser, drivers, bookings, toggleDriverOnline, acceptBooking } = useApp();
+  const { currentUser, drivers, bookings, toggleDriverOnline, acceptBooking, declineBooking } = useApp();
   const router = useRouter();
   const [matchingMode, setMatchingMode] = useState<MatchingMode>('manual');
   const [matchingReady, setMatchingReady] = useState(false);
-  const [showIncomingRequest, setShowIncomingRequest] = useState(false);
-  const [incomingSeconds, setIncomingSeconds] = useState(20);
-  const [demoAccepted, setDemoAccepted] = useState(false);
   const driver = drivers.find((d) => d.id === currentUser?.id);
   const nearbyRequests = bookings.filter((b) => b.status === 'searching');
-  const activeTrip = bookings.find(
-    (b) => b.driverId === currentUser?.id && ['accepted', 'verified', 'confirmed', 'started'].includes(b.status),
-  );
+  const latestDriverBooking = bookings
+    .filter((b) => b.driverId === currentUser?.id)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+  const activeTrip =
+    latestDriverBooking && ['accepted', 'picking_up', 'verified', 'confirmed', 'started'].includes(latestDriverBooking.status)
+      ? latestDriverBooking
+      : undefined;
   const firstNearbyRequest = nearbyRequests[0];
   const earningsToday = bookings
     .filter((b) => b.driverId === currentUser?.id && b.status === 'completed')
@@ -49,24 +49,13 @@ function DriverHome() {
   useEffect(() => {
     if (!matchingReady || matchingMode !== 'auto' || !driver?.online || !currentUser || activeTrip || !firstNearbyRequest) return;
     acceptBooking(firstNearbyRequest.id, currentUser.id);
-    router.replace('/driver/trip');
-  }, [matchingReady, matchingMode, driver?.online, currentUser, activeTrip, firstNearbyRequest?.id, acceptBooking, router]);
-
-  useEffect(() => {
-    if (!showIncomingRequest) return;
-    setIncomingSeconds(20);
-    const interval = window.setInterval(() => setIncomingSeconds((seconds) => Math.max(0, seconds - 1)), 1000);
-    const timeout = window.setTimeout(() => setShowIncomingRequest(false), 20000);
-    return () => {
-      window.clearInterval(interval);
-      window.clearTimeout(timeout);
-    };
-  }, [showIncomingRequest]);
+    router.replace(`/driver/trip?bookingId=${encodeURIComponent(firstNearbyRequest.id)}`);
+  }, [matchingReady, matchingMode, driver?.online, currentUser, activeTrip?.id, firstNearbyRequest?.id, acceptBooking, router]);
 
   function acceptNearbyRequest(request: Booking) {
     if (!currentUser || !driver?.online || activeTrip) return;
     acceptBooking(request.id, currentUser.id);
-    router.push('/driver/trip');
+    router.push(`/driver/trip?bookingId=${encodeURIComponent(request.id)}`);
   }
 
   if (!driver) return null;
@@ -110,14 +99,26 @@ function DriverHome() {
           )}
         </section>
 
-        
-        {activeTrip ? (
-          <Link href="/driver/trip" className="block rounded-2xl border border-blue-100 bg-white p-4 shadow-sm transition hover:shadow-md">
-            <p className="text-[10px] font-bold uppercase tracking-[0.13em] text-[#1769e0]">Active trip</p>
-            <p className="mt-1 font-display text-[15px] font-bold text-slate-800">{activeTrip.pickup.name} → {activeTrip.destination.name}</p>
-            <p className="mt-1 text-[12px] text-slate-500">{formatPeso(activeTrip.fare)} · Tap to continue</p>
+        {activeTrip && (
+          <Link
+            href={`/driver/trip?bookingId=${encodeURIComponent(activeTrip.id)}`}
+            className="block rounded-2xl border border-blue-100 bg-white p-4 shadow-sm transition hover:shadow-md"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-[10px] font-bold uppercase tracking-[0.13em] text-[#1769e0]">Active trip</p>
+              <span className="rounded-full bg-blue-50 px-2 py-1 text-[9px] font-bold uppercase tracking-wide text-[#1769e0]">
+                {activeTrip.status.replace('_', ' ')}
+              </span>
+            </div>
+            <p className="mt-2 font-display text-[15px] font-bold text-slate-800">{activeTrip.pickup.name} → {activeTrip.destination.name}</p>
+            <div className="mt-1 flex items-center justify-between gap-3">
+              <p className="truncate text-[12px] text-slate-500">{activeTrip.passengerName}</p>
+              <p className="shrink-0 text-[12px] font-semibold text-[#1769e0]">{formatPeso(activeTrip.fare)} · View trip</p>
+            </div>
           </Link>
-        ) : nearbyRequests.length === 0 ? (
+        )}
+
+        {nearbyRequests.length === 0 ? (
           <section className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
             <div className="flex items-center gap-3">
               <div className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-blue-50 text-[#1769e0]">
@@ -131,11 +132,6 @@ function DriverHome() {
               </div>
               <span className={`h-2 w-2 shrink-0 rounded-full ${driver.online ? 'animate-pulse bg-emerald-400' : 'bg-slate-300'}`} />
             </div>
-            {driver.online && (
-              <button type="button" onClick={() => setShowIncomingRequest(true)} className="mt-3 w-full rounded-xl border border-blue-100 bg-blue-50/60 px-3 py-2 text-[11px] font-semibold text-[#1769e0] transition hover:bg-blue-50">
-                Preview incoming request
-              </button>
-            )}
           </section>
         ) : (
           <section className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
@@ -146,7 +142,6 @@ function DriverHome() {
               </div>
               <Link href="/driver/requests" className="shrink-0 text-[11px] font-semibold text-[#1769e0]">View all</Link>
             </div>
-            <button type="button" onClick={() => setShowIncomingRequest(true)} className="mt-3 text-[10px] font-semibold text-slate-400 transition hover:text-[#1769e0]">Preview demo request</button>
           </section>
         )}
 
@@ -193,7 +188,10 @@ function DriverHome() {
                     </div>
                     <span className="shrink-0 font-display text-[14px] font-bold text-[#1769e0]">{formatPeso(request.fare)}</span>
                   </div>
-                  <button type="button" onClick={() => acceptNearbyRequest(request)} disabled={!driver.online} className="mt-3 min-h-9 w-full rounded-xl bg-[#1769e0] text-[11px] font-bold text-white transition hover:bg-[#125cc9] disabled:cursor-not-allowed disabled:opacity-45">Accept this trip</button>
+                  <div className="mt-3 flex gap-2">
+                    <button type="button" onClick={() => declineBooking(request.id)} disabled={!driver.online} className="min-h-9 flex-1 rounded-xl border border-slate-200 text-[11px] font-bold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-45">Decline</button>
+                    <button type="button" onClick={() => acceptNearbyRequest(request)} disabled={!driver.online || Boolean(activeTrip)} className="min-h-9 flex-1 rounded-xl bg-[#1769e0] text-[11px] font-bold text-white transition hover:bg-[#125cc9] disabled:cursor-not-allowed disabled:opacity-45">Accept this trip</button>
+                  </div>
                 </div>
               ))}
               {nearbyRequests.length > 2 && <Link href="/driver/requests" className="block py-1 text-center text-[11px] font-semibold text-[#1769e0]">See all {nearbyRequests.length} requests</Link>}
@@ -228,54 +226,6 @@ function DriverHome() {
       
       <BottomTabs role="driver" />
 
-      
-      {showIncomingRequest && (
-        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-slate-950/45 px-4 pb-5 pt-12 backdrop-blur-[2px] sm:items-center sm:py-6" role="presentation">
-          <section role="dialog" aria-modal="true" aria-labelledby="incoming-request-title" className="w-full max-w-[420px] overflow-hidden rounded-[26px] bg-white shadow-[0_24px_80px_rgba(6,21,44,0.32)]">
-            <div className="bg-gradient-to-r from-[#eaf4ff] to-[#f7fbff] px-5 pb-4 pt-5">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-[9px] font-extrabold uppercase tracking-[0.17em] text-[#d57437]">New ride nearby</p>
-                  <h2 id="incoming-request-title" className="mt-1 font-display text-[19px] font-extrabold tracking-tight text-slate-900">Incoming Ride Request!</h2>
-                </div>
-                <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-[#1769e0] shadow-sm"><span className="h-3 w-3 animate-ping rounded-full bg-[#1769e0]" /></span>
-              </div>
-              <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-blue-100">
-                <div className="h-full rounded-full bg-[#1769e0] transition-[width] duration-1000 ease-linear" style={{ width: `${(incomingSeconds / 20) * 100}%` }} />
-              </div>
-              <p className="mt-1.5 text-right text-[10px] font-semibold text-[#6a7f99]">Request expires in {incomingSeconds}s</p>
-            </div>
-            <div className="px-5 pb-5 pt-4">
-              <div className="flex items-center gap-3 rounded-2xl bg-slate-50 p-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#dcecff] text-[14px] font-extrabold text-[#245d9f]">JD</div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[13px] font-bold text-slate-800">Juan</p>
-                  <p className="mt-0.5 text-[10px] text-slate-500">Commuter · 4.9 rider rating</p>
-                </div>
-                <span className="font-display text-[18px] font-extrabold text-[#1769e0]">{formatPeso(PLACES[2].regularFare)}</span>
-              </div>
-              <div className="relative ml-5 mt-4 space-y-4 border-l border-dashed border-slate-300 py-0.5 pl-5">
-                <div className="absolute -left-[5px] top-1 h-2.5 w-2.5 rounded-full border-2 border-white bg-[#1769e0] ring-1 ring-blue-200" />
-                <p className="text-[12px] font-semibold text-slate-800">{PLACES[0].name}<span className="ml-2 text-[10px] font-medium text-slate-400">Pickup</span></p>
-                <div className="absolute -left-[5px] bottom-1 h-2.5 w-2.5 rounded-full border-2 border-white bg-[#e34c4c] ring-1 ring-red-200" />
-                <p className="text-[12px] font-semibold text-slate-800">Dadda<span className="ml-2 text-[10px] font-medium text-slate-400">Destination</span></p>
-              </div>
-              <div className="mt-4 flex gap-2.5">
-                <button type="button" onClick={() => { setShowIncomingRequest(false); setDemoAccepted(false); }} className="min-h-12 flex-1 rounded-2xl bg-slate-100 text-[13px] font-bold text-slate-500 transition hover:bg-slate-200">Decline</button>
-                <button type="button" onClick={() => { setShowIncomingRequest(false); setDemoAccepted(true); }} className="min-h-12 flex-[1.5] rounded-2xl bg-emerald-500 text-[13px] font-bold text-white shadow-[0_7px_16px_rgba(16,185,129,0.2)] transition hover:scale-[1.01] hover:bg-emerald-600 active:scale-[0.98]">Accept request</button>
-              </div>
-              <p className="mt-3 text-center text-[9px] text-slate-400">Demo preview · This sample request won&apos;t change live bookings</p>
-            </div>
-          </section>
-        </div>
-      )}
-
-      
-      {demoAccepted && (
-        <div role="status" className="fixed bottom-24 left-1/2 z-[70] -translate-x-1/2 rounded-full bg-slate-900 px-4 py-2.5 text-[11px] font-semibold text-white shadow-lg">
-          Demo request accepted
-        </div>
-      )}
     </div>
   );
 }

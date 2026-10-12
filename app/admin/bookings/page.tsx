@@ -13,6 +13,7 @@ const FILTERS: { key: BookingStatus | 'all'; label: string }[] = [
   { key: 'all', label: 'All' },
   { key: 'searching', label: 'Searching' },
   { key: 'accepted', label: 'Accepted' },
+  { key: 'picking_up', label: 'Picking up' },
   { key: 'started', label: 'On trip' },
   { key: 'completed', label: 'Completed' },
   { key: 'cancelled', label: 'Cancelled' },

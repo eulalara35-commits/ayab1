@@ -57,10 +57,10 @@ export const MIN_DISCOUNTED_FARE = 20;
 
 // Seed accounts para makapag-demo ng commuter, driver, at admin roles.
 export const USERS: User[] = [
-  { id: 'u1', name: 'Juan Dela Cruz', email: 'commuter@ayab.com', password: '123456', role: 'commuter', phone: '09171234567', status: 'active' },
+  { id: 'u1', name: 'Aze Suor', email: 'commuter@ayab.com', password: '123456', role: 'commuter', phone: '09171234567', status: 'active' },
   { id: 'u2', name: 'Maria Garcia', email: 'maria@ayab.com', password: '123456', role: 'commuter', phone: '09171234568', status: 'active' },
   { id: 'u3', name: 'Carlo Reyes', email: 'carlo@ayab.com', password: '123456', role: 'commuter', phone: '09171234569', status: 'active' },
-  { id: 'd1', name: 'Pedro Santos', email: 'driver@ayab.com', password: '123456', role: 'driver', phone: '09181234567', status: 'active' },
+  { id: 'd1', name: 'Russel Banan', email: 'driver@ayab.com', password: '123456', role: 'driver', phone: '09181234567', status: 'active' },
   { id: 'd2', name: 'Ramon Bautista', email: 'ramon@ayab.com', password: '123456', role: 'driver', phone: '09181234568', status: 'active' },
   { id: 'd3', name: 'Noel Ramirez', email: 'noel@ayab.com', password: '123456', role: 'driver', phone: '09181234569', status: 'active' },
   { id: 'a1', name: 'AYAB Administrator', email: 'admin@ayab.com', password: '123456', role: 'admin', phone: '09991234567', status: 'active' },
@@ -68,7 +68,7 @@ export const USERS: User[] = [
 
 // Seed driver profiles, vehicle details, availability, ratings, at sample coordinates.
 export const DRIVERS: Driver[] = [
-  { id: 'd1', name: 'Pedro Santos', email: 'driver@ayab.com', password: '123456', role: 'driver', phone: '09181234567', status: 'active', rating: 4.8, completedTrips: 125, plate: 'ABC 1234', tricycle: 'AYAB Blue Tricycle', qrId: 'AYAB-DRIVER-001', online: true, verified: true, lat: 17.6132, lng: 121.7269, eta: 4 },
+  { id: 'd1', name: 'Russel Banan', email: 'driver@ayab.com', password: '123456', role: 'driver', phone: '09181234567', status: 'active', rating: 4.8, completedTrips: 125, plate: 'ABC 1234', tricycle: 'AYAB Blue Tricycle', qrId: 'AYAB-DRIVER-001', online: true, verified: true, lat: 17.6132, lng: 121.7269, eta: 4 },
   { id: 'd2', name: 'Ramon Bautista', email: 'ramon@ayab.com', password: '123456', role: 'driver', phone: '09181234568', status: 'active', rating: 5.0, completedTrips: 98, plate: 'DEF 5678', tricycle: 'AYAB Green Tricycle', qrId: 'AYAB-DRIVER-002', online: true, verified: true, lat: 17.6151, lng: 121.7310, eta: 6 },
   { id: 'd3', name: 'Noel Ramirez', email: 'noel@ayab.com', password: '123456', role: 'driver', phone: '09181234569', status: 'active', rating: 4.9, completedTrips: 210, plate: 'GHI 9012', tricycle: 'AYAB Red Tricycle', qrId: 'AYAB-DRIVER-003', online: false, verified: false, lat: 17.6180, lng: 121.7300, eta: 8 },
 ];
@@ -107,8 +107,8 @@ export const INCIDENTS: Incident[] = [
   {
     id: 'i2',
     title: 'QR verification issue',
-    passenger: 'Juan Dela Cruz',
-    driver: 'Pedro Santos',
+    passenger: 'Aze Suor',
+    driver: 'Russel Banan',
     description: 'QR did not scan on first attempt.',
     status: 'Investigating',
     notes: '',

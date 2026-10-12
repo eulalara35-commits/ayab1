@@ -86,7 +86,7 @@ function PlaceSearch({
 }
 
 function BookRide() {
-  const { drivers, createBooking } = useApp();
+  const { drivers, bookings, createBooking } = useApp();
   const router = useRouter();
   const [pickupId, setPickupId] = useState(PLACES[0].id);
   const [destinationId, setDestinationId] = useState(PLACES[2].id);
@@ -95,6 +95,7 @@ function BookRide() {
   const [fareCategory, setFareCategory] = useState<FareCategory>('regular');
   const [passengerCount, setPassengerCount] = useState(1);
   const [specialFareInput, setSpecialFareInput] = useState('');
+  const [requestStarted, setRequestStarted] = useState(false);
   const [requesting, setRequesting] = useState(false);
   const [validationMessage, setValidationMessage] = useState('');
   const [locationMessage, setLocationMessage] = useState('');
@@ -124,7 +125,16 @@ function BookRide() {
   const enteredSpecialFare = Number(specialFareInput);
   const validSpecialFare = Number.isFinite(enteredSpecialFare) && enteredSpecialFare >= minimumFare;
   const fare = specialRide ? (validSpecialFare ? enteredSpecialFare : minimumFare) : minimumFare;
-  const availableDrivers = drivers.filter((d) => d.online && d.verified);
+  const availableDrivers = drivers.filter(
+    (d) =>
+      d.online &&
+      d.verified &&
+      !bookings.some(
+        (booking) =>
+          booking.driverId === d.id &&
+          ['accepted', 'picking_up', 'verified', 'confirmed', 'started'].includes(booking.status),
+      ),
+  );
 
   useEffect(() => {
     const controller = new AbortController();
@@ -151,6 +161,7 @@ function BookRide() {
   }, []);
 
   async function updateRoadLocation(point: RoutePoint, location: 'pickup' | 'destination') {
+    setRequestStarted(false);
     const controller = new AbortController();
     const otherLocation = location === 'pickup' ? 'destination' : 'pickup';
     snapControllers.current[location]?.abort();
@@ -176,6 +187,7 @@ function BookRide() {
   }
 
   function selectPickup(placeId: string) {
+    setRequestStarted(false);
     setPickupId(placeId);
     const place = PLACES.find((item) => item.id === placeId);
     if (place) {
@@ -185,6 +197,7 @@ function BookRide() {
   }
 
   function selectDestination(placeId: string) {
+    setRequestStarted(false);
     setDestinationId(placeId);
     const place = PLACES.find((item) => item.id === placeId);
     if (place) {
@@ -193,7 +206,29 @@ function BookRide() {
     }
   }
 
+  function beginRequest() {
+    if (!previewRoute || snappingLocation) {
+      setValidationMessage('Wait until both locations are placed on a road and the route is ready.');
+      return;
+    }
+    if (!hasBothPlaces || sameStop) {
+      setValidationMessage('Please choose both a pickup point and destination.');
+      return;
+    }
+    if (specialRide && !validSpecialFare) {
+      setValidationMessage('Enter a valid fare offer for this special trip.');
+      return;
+    }
+    if (availableDrivers.length === 0) {
+      setValidationMessage('No drivers are available right now.');
+      return;
+    }
+    setValidationMessage('');
+    setRequestStarted(true);
+  }
+
   function requestRide() {
+    if (!requestStarted || requesting) return;
     if (!previewRoute || snappingLocation) {
       setValidationMessage('Wait until both locations are placed on a road and the route is ready.');
       return;
@@ -217,14 +252,19 @@ function BookRide() {
 
     setRequesting(true);
     setValidationMessage('');
-    createBooking(
-      pickup,
-      destination,
-      fareCategory,
-      specialRide ? enteredSpecialFare : undefined,
-      passengerCount,
-    );
-    router.push('/commuter/tracking');
+    try {
+      createBooking(
+        pickup,
+        destination,
+        fareCategory,
+        specialRide ? enteredSpecialFare : undefined,
+        passengerCount,
+      );
+      router.push('/commuter/tracking');
+    } catch (error) {
+      setValidationMessage(error instanceof Error ? error.message : 'Unable to assign a driver. Please try again.');
+      setRequesting(false);
+    }
   }
 
   return (
@@ -304,6 +344,7 @@ function BookRide() {
                 aria-pressed={selected}
                 onClick={() => {
                   setFareCategory(value);
+                  setRequestStarted(false);
                   if (value !== 'special') setSpecialFareInput('');
                 }}
                 className={`flex min-h-[60px] touch-manipulation flex-col items-start justify-center rounded-xl px-2 text-left transition duration-150 ${selected ? 'bg-[#1769e0] text-white shadow-sm' : 'text-[#65758a] hover:bg-white/80'}`}
@@ -320,7 +361,7 @@ function BookRide() {
           <div className="mt-2 flex items-center justify-between gap-3">
             <button
               type="button"
-              onClick={() => setPassengerCount((count) => Math.max(1, count - 1))}
+              onClick={() => { setPassengerCount((count) => Math.max(1, count - 1)); setRequestStarted(false); }}
               className="flex h-11 w-11 touch-manipulation items-center justify-center rounded-full border border-[#dfe7f0] bg-white text-[20px] font-medium text-[#3a4d64]"
               aria-label="Decrease passengers"
             >
@@ -331,7 +372,7 @@ function BookRide() {
             </div>
             <button
               type="button"
-              onClick={() => setPassengerCount((count) => Math.min(8, count + 1))}
+              onClick={() => { setPassengerCount((count) => Math.min(8, count + 1)); setRequestStarted(false); }}
               className="flex h-11 w-11 touch-manipulation items-center justify-center rounded-full border border-[#dfe7f0] bg-white text-[20px] font-medium text-[#3a4d64]"
               aria-label="Increase passengers"
             >
@@ -339,10 +380,6 @@ function BookRide() {
             </button>
           </div>
         </div>
-
-        {fareCategory === 'discounted' && (
-          <p className="mt-2 text-[10px] leading-4 text-[#8794a4]">Student, senior citizen, or PWD verification applies to the rider using the app.</p>
-        )}
 
         {specialRide && (
           <div className="mt-2">
@@ -358,7 +395,7 @@ function BookRide() {
                 min={minimumFare}
                 step="0.01"
                 value={specialFareInput}
-                onChange={(event) => setSpecialFareInput(event.target.value)}
+                onChange={(event) => { setSpecialFareInput(event.target.value); setRequestStarted(false); }}
                 placeholder={minimumFare.toFixed(2)}
                 className="h-11 w-full border-0 bg-transparent p-0 text-[16px] font-semibold text-[#26384f] outline-none focus:ring-0"
                 required
@@ -389,14 +426,28 @@ function BookRide() {
         </div>
 
         <div className="booking-fare-sheet__footer">
-          <button
-            onClick={requestRide}
-            disabled={!hasBothPlaces || sameStop || requesting || Boolean(snappingLocation) || !previewRoute || availableDrivers.length === 0 || (specialRide && !validSpecialFare)}
-            className="flex min-h-[56px] w-full touch-manipulation items-center justify-center gap-2 rounded-2xl bg-[#1769e0] px-5 text-[15px] font-bold text-white shadow-[0_7px_18px_rgba(23,105,224,0.24)] transition duration-150 hover:bg-[#125cc9] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {availableDrivers.length === 0 ? 'No drivers available' : requesting ? 'Requesting ride…' : snappingLocation ? 'Placing pin on road…' : !previewRoute ? 'Loading road route…' : 'Request Tricycle'}
-            {availableDrivers.length > 0 && !requesting && <span aria-hidden="true">{'\u2192'}</span>}
-          </button>
+          {!requestStarted ? (
+            <button
+              type="button"
+              onClick={beginRequest}
+              disabled={!hasBothPlaces || sameStop || Boolean(snappingLocation) || !previewRoute || availableDrivers.length === 0 || (specialRide && !validSpecialFare)}
+              className="flex min-h-[56px] w-full touch-manipulation items-center justify-center gap-2 rounded-2xl bg-[#1769e0] px-5 text-[15px] font-bold text-white shadow-[0_7px_18px_rgba(23,105,224,0.24)] transition duration-150 hover:bg-[#125cc9] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Request Tricycle <span aria-hidden="true">{'\u2192'}</span>
+            </button>
+          ) : (
+            <div className="space-y-2">
+              <p className="text-center text-[11px] text-[#738196]">Paying verifies your fare and sends the request to drivers.</p>
+              <button
+                onClick={requestRide}
+                disabled={!hasBothPlaces || sameStop || requesting || Boolean(snappingLocation) || !previewRoute || availableDrivers.length === 0 || (specialRide && !validSpecialFare)}
+                className="flex min-h-[56px] w-full touch-manipulation items-center justify-center gap-2 rounded-2xl bg-[#1769e0] px-5 text-[15px] font-bold text-white shadow-[0_7px_18px_rgba(23,105,224,0.24)] transition duration-150 hover:bg-[#125cc9] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {requesting ? 'Verifying payment and sending…' : `Pay and verify · ${formatPeso(fare)}`}
+                {!requesting && <span aria-hidden="true">{'\u2192'}</span>}
+              </button>
+            </div>
+          )}
         </div>
       </section>
     </main>

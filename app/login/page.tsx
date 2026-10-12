@@ -71,7 +71,7 @@ export default function LoginPage() {
               <span className="font-display text-[12px] font-extrabold tracking-[0.2em] text-[#174b91]">AYAB</span>
             </div>
             <h1 className="font-display text-[32px] font-extrabold leading-[1.12] tracking-[-0.045em] text-[#172b45] sm:text-[36px]">
-              Maysa nga AYAB<br />May tricy agad.
+              Maysa nga AYAB,<br />May tricy agad.
             </h1>
             <div className="mt-5 flex items-center gap-3">
               <span className="h-9 w-1 rounded-full bg-[#1769e0]" />
