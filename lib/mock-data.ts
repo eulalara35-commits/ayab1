@@ -57,7 +57,7 @@ export const MIN_DISCOUNTED_FARE = 20;
 
 // Seed accounts para makapag-demo ng commuter, driver, at admin roles.
 export const USERS: User[] = [
-  { id: 'u1', name: 'Aze Ganda', email: 'commuter@ayab.com', password: '123456', role: 'commuter', phone: '09171234567', status: 'active' },
+  { id: 'u1', name: 'Azi Ganda', email: 'commuter@ayab.com', password: '123456', role: 'commuter', phone: '09171234567', status: 'active' },
   { id: 'u2', name: 'Maria Garcia', email: 'maria@ayab.com', password: '123456', role: 'commuter', phone: '09171234568', status: 'active' },
   { id: 'u3', name: 'Carlo Reyes', email: 'carlo@ayab.com', password: '123456', role: 'commuter', phone: '09171234569', status: 'active' },
   { id: 'd1', name: 'Russel Pedro', email: 'driver@ayab.com', password: '123456', role: 'driver', phone: '09181234567', status: 'active' },
@@ -107,7 +107,7 @@ export const INCIDENTS: Incident[] = [
   {
     id: 'i2',
     title: 'QR verification issue',
-    passenger: 'Aze Ganda',
+    passenger: 'Azi Ganda',
     driver: 'Russel Pedro',
     description: 'QR did not scan on first attempt.',
     status: 'Investigating',
