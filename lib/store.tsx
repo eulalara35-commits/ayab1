@@ -74,6 +74,19 @@ const SEED: AppState = {
   notifications: [],
 };
 
+function migrateDemoName(name: string): string {
+  switch (name) {
+    case 'Juan Dela Cruz':
+    case 'Aze Suor':
+      return 'Aze Ganda';
+    case 'Pedro Santos':
+    case 'Russel Banan':
+      return 'Russel Pedro';
+    default:
+      return name;
+  }
+}
+
 // Tumatanggap ng children, naglo-load at nagsi-save ng app state, at nagbibigay ng data at actions sa mga child component.
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<AppState>(SEED);
@@ -85,9 +98,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (hydrated.current) return;
     hydrated.current = true;
     const savedAnnouncements = loadItem('announcements', ANNOUNCEMENTS);
+    const savedUsers = loadItem('users', USERS).map((user) => ({
+      ...user,
+      name: migrateDemoName(user.name),
+    }));
+    const savedDrivers = loadItem('drivers', DRIVERS).map((driver) => ({
+      ...driver,
+      name: migrateDemoName(driver.name),
+    }));
+    const savedCurrentUser = loadItem('currentUser', null as User | null);
     const savedBookings = loadItem('bookings', BOOKINGS).map((booking) => {
       const normalized = {
         ...booking,
+        passengerName: migrateDemoName(booking.passengerName),
         pickup:
           booking.pickup.id === 'p1' && booking.pickup.lat === 17.603 && booking.pickup.lng === 121.718
             ? PLACES[0]
@@ -99,13 +122,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       };
       return normalized;
     });
+    const savedIncidents = loadItem('incidents', INCIDENTS).map((incident) => ({
+      ...incident,
+      passenger: migrateDemoName(incident.passenger),
+      driver: migrateDemoName(incident.driver),
+    }));
     setState({
       mounted: true,
-      currentUser: loadItem('currentUser', null as User | null),
-      users: loadItem('users', USERS),
-      drivers: loadItem('drivers', DRIVERS),
+      currentUser: savedCurrentUser
+        ? { ...savedCurrentUser, name: migrateDemoName(savedCurrentUser.name) }
+        : null,
+      users: savedUsers,
+      drivers: savedDrivers,
       bookings: savedBookings,
-      incidents: loadItem('incidents', INCIDENTS),
+      incidents: savedIncidents,
       announcements: savedAnnouncements.map((announcement) =>
         announcement.id === 'an1'
           ? { ...announcement, body: 'Maysa nga AYAB, may tricy agad' }
